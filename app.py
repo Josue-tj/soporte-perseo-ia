@@ -28,18 +28,33 @@ GEMINI_CUSTOM_CSS = """
         color: #e3e3e3;
     }
 
+    /* Ocultar menú de opciones predeterminado y pie de página de Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* Mantiene transparente el encabezado y visible el botón de reabrir menú */
+
+    /* Hacer el header transparente */
     header[data-testid="stHeader"] {
         background: transparent !important;
+        z-index: 99999 !important;
     }
-    [data-testid="collapsedControl"] {
-        color: #e3e3e3 !important;
+
+    /* Botón flotante para VOLVER A MOSTRAR el menú lateral */
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapseButton"] {
+        visibility: visible !important;
+        display: flex !important;
+        color: #ffffff !important;
+        background-color: #1e1f20 !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border-radius: 10px !important;
+        margin: 10px !important;
     }
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+
+    [data-testid="collapsedControl"]:hover,
+    [data-testid="stSidebarCollapseButton"]:hover {
+        background-color: #28292a !important;
+        border-color: #4285f4 !important;
+    }
 
     /* Sidebar Estilo Gemini Dark */
     section[data-testid="stSidebar"] {
