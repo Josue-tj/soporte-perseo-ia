@@ -30,6 +30,15 @@ GEMINI_CUSTOM_CSS = """
 
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    
+    /* Mantiene transparente el encabezado y visible el botón de reabrir menú */
+    header[data-testid="stHeader"] {
+        background: transparent !important;
+    }
+    [data-testid="collapsedControl"] {
+        color: #e3e3e3 !important;
+    }
+    footer {visibility: hidden;}
     header {visibility: hidden;}
 
     /* Sidebar Estilo Gemini Dark */
