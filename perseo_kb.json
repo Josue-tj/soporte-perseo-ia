@@ -1,0 +1,26 @@
+[
+  {
+    "plataforma": "Perseo PC",
+    "modulo": "Facturación / SRI",
+    "error": "Error de firma o clave de acceso 43",
+    "ruta_interfaz": "Administración > Parámetros > Facturación Electrónica > Archivo .p12",
+    "diagnostico": "El certificado digital (.p12 / .pfx) venció o la clave colocada es incorrecta.",
+    "solucion": [
+      "1. Ir a Administración > Parámetros > Empresa.",
+      "2. En la pestaña 'Firma Electrónica', verificar la fecha de caducidad.",
+      "3. Cargar el nuevo archivo .p12 y volver a probar la clave de la firma."
+    ]
+  },
+  {
+    "plataforma": "App Móvil",
+    "modulo": "Sincronización / Ventas",
+    "error": "Error de conexión con el servidor principal al sincronizar pedidos",
+    "ruta_interfaz": "Menú Lateral > Configuración > Servidor IP / Puerto",
+    "diagnostico": "La IP local cambió o la App Móvil no tiene acceso al puerto 8080/8000 del servidor.",
+    "solucion": [
+      "1. En la App Móvil, abrir 'Configuración de Conexión'.",
+      "2. Verificar si la IP es local (192.168.x.x) o IP Pública/DDNS si están fuera de la oficina.",
+      "3. Abrir el puerto en el Firewall de Windows del servidor donde corre Perseo PC."
+    ]
+  }
+]
