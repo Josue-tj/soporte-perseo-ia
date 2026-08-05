@@ -1,14 +1,79 @@
 import os
 import time
 import base64
+import json
+import sqlite3
 from PIL import Image
 import streamlit as st
 from dotenv import load_dotenv
-import json
 import google.generativeai as genai
 
 # ==========================================
-# 1. CONFIGURACIÓN DE PÁGINA
+# 1. GESTIÓN DE BASE DE DATOS (SQLITE)
+# ==========================================
+DB_NAME = "perseo_chat.db"
+
+def init_db():
+    """Inicializa la base de datos y crea la tabla si no existe."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS historial (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT,
+            content TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def guardar_y_limpiar_mensaje(role, content, max_mensajes=50):
+    """Guarda un mensaje y aplica la regla de borrar el más antiguo si supera el límite (FIFO)."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # Insertar nuevo mensaje
+    cursor.execute("INSERT INTO historial (role, content) VALUES (?, ?)", (role, content))
+    
+    # Contar cuántos mensajes hay en total
+    cursor.execute("SELECT COUNT(*) FROM historial")
+    total_mensajes = cursor.fetchone()[0]
+    
+    # Si supera el límite (50), borrar los excedentes más antiguos (Corregido WHERE)
+    if total_mensajes > max_mensajes:
+        excess = total_mensajes - max_mensajes
+        cursor.execute("""
+            DELETE FROM historial 
+            WHERE id IN (SELECT id FROM historial ORDER BY id ASC LIMIT ?)
+        """, (excess,))
+        
+    conn.commit()
+    conn.close()
+
+def cargar_historial_db():
+    """Carga todo el historial guardado en la base de datos para mostrarlo en Streamlit."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT role, content FROM historial ORDER BY id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [{"role": row[0], "content": row[1]} for row in rows]
+
+def vaciar_db():
+    """Elimina todos los mensajes guardados en la base de datos."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM historial")
+    conn.commit()
+    conn.close()
+
+# Inicializar la base de datos al arrancar la app
+init_db()
+
+
+# ==========================================
+# 2. CONFIGURACIÓN DE PÁGINA
 # ==========================================
 st.set_page_config(
     page_title="Perseo IA - Soporte Conversacional",
@@ -17,8 +82,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
 # ==========================================
-# 2. DEFINICIÓN DEL SYSTEM PROMPT Y BASE DE CONOCIMIENTO
+# 3. DEFINICIÓN DEL SYSTEM PROMPT Y BASE DE CONOCIMIENTO
 # ==========================================
 SYSTEM_PROMPT = """
 Eres 'Perseo AI Assistant Master', especialista senior y tutor certificado en el ecosistema completo de Perseo ERP (Ecuador):
@@ -49,13 +115,12 @@ def cargar_base_conocimiento():
     except Exception:
         return ""
 
-# Cargar el contexto y unirlo con el System Prompt principal
 base_conocimiento_texto = cargar_base_conocimiento()
 SYSTEM_PROMPT_COMPLETO = f"{SYSTEM_PROMPT}\n\nBASE DE DATOS TÉCNICA DE ERRORES PERSEO:\n{base_conocimiento_texto}"
 
 
 # ==========================================
-# 3. ESTILOS CSS
+# 4. ESTILOS CSS
 # ==========================================
 GEMINI_CUSTOM_CSS = """
 <style>
@@ -65,23 +130,19 @@ GEMINI_CUSTOM_CSS = """
         font-family: 'Outfit', 'Google Sans', sans-serif;
     }
 
-    /* Fondo general estilo Gemini Dark Mode */
     .stApp {
         background-color: #131314;
         color: #e3e3e3;
     }
 
-    /* Ocultar menú de opciones predeterminado y pie de página de Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 
-    /* Hacer el header transparente */
     header[data-testid="stHeader"] {
         background: transparent !important;
         z-index: 99999 !important;
     }
 
-    /* Botón flotante para VOLVER A MOSTRAR el menú lateral */
     [data-testid="collapsedControl"],
     [data-testid="stSidebarCollapseButton"] {
         visibility: visible !important;
@@ -99,13 +160,11 @@ GEMINI_CUSTOM_CSS = """
         border-color: #4285f4 !important;
     }
 
-    /* Sidebar Estilo Gemini Dark */
     section[data-testid="stSidebar"] {
         background-color: #1e1f20;
         border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
 
-    /* Saludo Gemini Style Header */
     .gemini-header-title {
         background: linear-gradient(135deg, #4285f4 0%, #9b51e0 50%, #d946ef 100%);
         -webkit-background-clip: text;
@@ -123,50 +182,16 @@ GEMINI_CUSTOM_CSS = """
         margin-bottom: 25px;
     }
 
-    /* Tarjetas de sugerencia estilo Gemini Chips */
-    .suggestion-card {
-        background: #1e1f20;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 18px;
-        padding: 16px 20px;
-        cursor: pointer;
-        transition: all 0.25s ease;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    }
-
-    .suggestion-card:hover {
-        background: #28292a;
-        border-color: #4285f4;
-        transform: translateY(-2px);
-    }
-
-    .suggestion-icon {
-        font-size: 1.4rem;
-        margin-bottom: 10px;
-    }
-
-    .suggestion-text {
-        font-size: 0.9rem;
-        color: #c4c7c5;
-        font-weight: 500;
-    }
-
-    /* Mensajes del Chat Estilo Gemini */
     .stChatMessage {
         background-color: transparent !important;
         border: none !important;
         padding: 1rem 0rem !important;
     }
 
-    /* Estilo para mensaje del Asistente Gemini */
     div[data-testid="stChatMessage"]:nth-child(even) {
         background-color: transparent !important;
     }
 
-    /* Avatar e íconos */
     .gemini-sparkle-icon {
         width: 32px;
         height: 32px;
@@ -180,7 +205,6 @@ GEMINI_CUSTOM_CSS = """
         box-shadow: 0 0 12px rgba(66, 133, 244, 0.4);
     }
 
-    /* Caja de Input de Chat flotante */
     .stChatInputContainer {
         border-radius: 28px !important;
         background-color: #1e1f20 !important;
@@ -193,7 +217,6 @@ GEMINI_CUSTOM_CSS = """
         box-shadow: 0 0 15px rgba(168, 85, 247, 0.2) !important;
     }
 
-    /* Badge de Estado */
     .gemini-badge {
         background: rgba(66, 133, 244, 0.15);
         color: #8ab4f8;
@@ -212,7 +235,7 @@ st.markdown(GEMINI_CUSTOM_CSS, unsafe_allow_html=True)
 
 
 # ==========================================
-# 4. INICIALIZACIÓN Y API KEY
+# 5. INICIALIZACIÓN Y API KEY
 # ==========================================
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
@@ -222,8 +245,9 @@ if not api_key:
     except Exception:
         pass
 
+# Cargar mensajes previos directamente desde SQLite
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = cargar_historial_db()
 
 if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
@@ -232,19 +256,15 @@ PREFERRED_MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
 
 # ==========================================
-# 5. FUNCIÓN DE GENERACIÓN
+# 6. FUNCIÓN DE GENERACIÓN
 # ==========================================
 def generate_gemini_response(contents):
-    """
-    Intenta generar contenido probando secuencialmente modelos activos.
-    """
     if not api_key:
         raise ValueError("No se ha configurado la clave API GEMINI_API_KEY en el archivo .env o en secrets.")
 
     genai.configure(api_key=api_key)
     last_error = None
 
-    # 1. Probar modelos recomendados activos
     for model_name in PREFERRED_MODELS:
         try:
             model = genai.GenerativeModel(model_name)
@@ -254,7 +274,6 @@ def generate_gemini_response(contents):
             last_error = e
             continue
 
-    # 2. Si fallan los preferidos, consultar modelos disponibles en la API
     try:
         available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         for m in available:
@@ -274,7 +293,7 @@ def generate_gemini_response(contents):
 
 
 # ==========================================
-# 6. SIDEBAR Y UI
+# 7. SIDEBAR Y UI
 # ==========================================
 with st.sidebar:
     st.markdown("""
@@ -314,7 +333,8 @@ with st.sidebar:
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🗑️ Limpiar Conversación", use_container_width=True):
-        st.session_state.messages = []
+        vaciar_db()  # Limpia la base de datos física
+        st.session_state.messages = []  # Limpia la sesión actual
         st.session_state.pending_prompt = None
         st.rerun()
 
@@ -327,7 +347,7 @@ st.markdown("""
 
 
 # ==========================================
-# 7. CHIPS DE SUGERENCIA Y RENDERIZADO DE MENSAJES
+# 8. CHIPS DE SUGERENCIA Y RENDERIZADO DE MENSAJES
 # ==========================================
 if len(st.session_state.messages) == 0:
     col1, col2, col3, col4 = st.columns(4)
@@ -364,7 +384,7 @@ for msg in st.session_state.messages:
 
 
 # ==========================================
-# 8. LÓGICA PRINCIPAL DE CHAT
+# 9. LÓGICA PRINCIPAL DE CHAT
 # ==========================================
 user_prompt = st.chat_input("Escribe tu consulta sobre Perseo PC o describe el error...")
 
@@ -373,7 +393,9 @@ if st.session_state.pending_prompt and not user_prompt:
     st.session_state.pending_prompt = None
 
 if user_prompt:
-    # 1. Agregar mensaje de usuario
+    # 1. Guardar mensaje de usuario en SQLite y sesión
+    guardar_y_limpiar_mensaje("user", user_prompt)
+    
     user_msg_data = {"role": "user", "content": user_prompt}
     if image_preview is not None:
         user_msg_data["image"] = image_preview
@@ -385,20 +407,18 @@ if user_prompt:
             st.image(image_preview, width=300)
         st.markdown(user_prompt)
 
-    # 2. Generar respuesta
+    # 2. Generar respuesta del asistente
     with st.chat_message("assistant", avatar="✨"):
         message_placeholder = st.empty()
         message_placeholder.markdown("*(Pensando y analizando caso en Perseo...)*")
 
         try:
-            # Construir conversación usando el PROMPT COMPLETO (Base de Datos + Sistema)
             contents = [SYSTEM_PROMPT_COMPLETO]
             
             for past_msg in st.session_state.messages:
                 role_label = "Usuario: " if past_msg["role"] == "user" else "Asistente Perseo: "
                 contents.append(f"{role_label}{past_msg['content']}")
 
-            # Instrucción e inyección de la imagen real para Gemini Vision
             if image_preview is not None:
                 prompt_con_vision = f"""
                 Analiza minuciosamente esta captura de pantalla del sistema Perseo:
@@ -409,12 +429,13 @@ if user_prompt:
                 Consulta del usuario: {user_prompt}
                 """
                 contents.append(prompt_con_vision)
-                contents.append(image_preview) # <--- AQUÍ SE ENVÍA EL ARCHIVO AL MODELO
+                contents.append(image_preview)
 
             response_text, model_used = generate_gemini_response(contents)
             message_placeholder.markdown(response_text)
             
-            # Guardar respuesta
+            # Guardar respuesta en SQLite y en sesión
+            guardar_y_limpiar_mensaje("assistant", response_text)
             st.session_state.messages.append({"role": "assistant", "content": response_text})
 
         except Exception as e:
