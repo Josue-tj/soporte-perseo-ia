@@ -4,6 +4,22 @@ import base64
 from PIL import Image
 import streamlit as st
 from dotenv import load_dotenv
+import json
+
+@st.cache_data
+def cargar_base_conocimiento():
+    try:
+        with open("perseo_kb.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return json.dumps(data, ensure_ascii=False)
+    except Exception:
+        return ""
+
+# Cargar el contexto en la ejecución
+base_conocimiento_texto = cargar_base_conocimiento()
+
+# Se inyecta en las instrucciones del sistema
+SYSTEM_PROMPT_COMPLETO = f"{SYSTEM_PROMPT}\n\nBASE DE DATOS TÉCNICA DE ERRORES PERSEO:\n{base_conocimiento_texto}"
 import google.generativeai as genai
 
 # Configuración de página de Streamlit
@@ -359,9 +375,18 @@ if user_prompt:
                 role_label = "Usuario: " if past_msg["role"] == "user" else "Asistente Perseo: "
                 contents.append(f"{role_label}{past_msg['content']}")
 
-            # Adjuntar imagen si existe en la última interacción
+            
+            # Cuando se envía una imagen, instruir al modelo sobre qué extraer
             if image_preview is not None:
-                contents.append(image_preview)
+            prompt_con_vision = f"""
+            Analiza minuciosamente esta captura de pantalla del sistema Perseo:
+            1. Lee el código de error exacto de la ventana emergente (modal/dialog).
+            2. Identifica en qué pantalla de Perseo (PC, Web o Móvil) se encuentra el usuario según los botones y la barra superior visibles.
+            3. Consulta tu conocimiento de Perseo y entrega la solución exacta para este mensaje de error.
+
+            Consulta del usuario: {user_prompt}
+            """
+            contents.append(prompt_con_vision))
 
             response_text, model_used = generate_gemini_response(contents)
 
