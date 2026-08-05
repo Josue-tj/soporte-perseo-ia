@@ -1,26 +1,39 @@
 [
   {
+    "tipo": "error",
     "plataforma": "Perseo PC",
-    "modulo": "Facturación / SRI",
-    "error": "Error de firma o clave de acceso 43",
-    "ruta_interfaz": "Administración > Parámetros > Facturación Electrónica > Archivo .p12",
-    "diagnostico": "El certificado digital (.p12 / .pfx) venció o la clave colocada es incorrecta.",
-    "solucion": [
-      "1. Ir a Administración > Parámetros > Empresa.",
-      "2. En la pestaña 'Firma Electrónica', verificar la fecha de caducidad.",
-      "3. Cargar el nuevo archivo .p12 y volver a probar la clave de la firma."
+    "modulo": "Facturación",
+    "consulta_clave": "Error firma caducada",
+    "solucion": "Ir a Administración > Parámetros > Empresa y actualizar el archivo .p12."
+  },
+  {
+    "tipo": "procedimiento_academia",
+    "plataforma": "Perseo Web / PC",
+    "modulo": "Inventarios",
+    "tema": "Creación de un nuevo producto o artículo",
+    "ruta_interfaz": "Módulo Inventario > Mantenimiento > Artículos",
+    "pasos": [
+      "1. Dirígete al Módulo de Inventarios en el menú principal.",
+      "2. Haz clic en la opción 'Artículos' o presiona la tecla de acceso rápido.",
+      "3. Haz clic en el botón 'Nuevo' (o presiona F3) para habilitar el formulario.",
+      "4. Completa los campos obligatorios: Código, Nombre/Descripción, Grupo de Producto y porcentaje de IVA aplicable.",
+      "5. En la pestaña de precios, ingresa el costo y el PVP (Precio de Venta al Público) según las políticas del negocio.",
+      "6. Guarda los cambios haciendo clic en el botón de disquete o Aceptar."
     ]
   },
   {
-    "plataforma": "App Móvil",
-    "modulo": "Sincronización / Ventas",
-    "error": "Error de conexión con el servidor principal al sincronizar pedidos",
-    "ruta_interfaz": "Menú Lateral > Configuración > Servidor IP / Puerto",
-    "diagnostico": "La IP local cambió o la App Móvil no tiene acceso al puerto 8080/8000 del servidor.",
-    "solucion": [
-      "1. En la App Móvil, abrir 'Configuración de Conexión'.",
-      "2. Verificar si la IP es local (192.168.x.x) o IP Pública/DDNS si están fuera de la oficina.",
-      "3. Abrir el puerto en el Firewall de Windows del servidor donde corre Perseo PC."
+    "tipo": "procedimiento_academia",
+    "plataforma": "Perseo Web",
+    "modulo": "Cuentas por Cobrar",
+    "tema": "Registro de un cobro a cliente",
+    "ruta_interfaz": "Menú Principal > Ventas > Cobros",
+    "pasos": [
+      "1. Ingresa a la plataforma web de Perseo con tus credenciales.",
+      "2. Despliega el menú lateral y selecciona 'Ventas' > 'Cobros'.",
+      "3. Selecciona el cliente al que vas a registrar el pago.",
+      "4. El sistema te mostrará las facturas pendientes. Marca la factura correspondiente.",
+      "5. Selecciona la forma de pago (Efectivo, Transferencia, Tarjeta o Retención).",
+      "6. Ingresa el número de comprobante o referencia bancaria y haz clic en procesar."
     ]
   }
 ]
