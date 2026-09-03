@@ -1,6 +1,5 @@
 import os
 import time
-import base64
 import json
 import sqlite3
 from PIL import Image
@@ -39,7 +38,7 @@ def guardar_y_limpiar_mensaje(role, content, max_mensajes=50):
     cursor.execute("SELECT COUNT(*) FROM historial")
     total_mensajes = cursor.fetchone()[0]
     
-    # Si supera el límite (50), borrar los excedentes más antiguos (Corregido WHERE)
+    # Si supera el límite (50), borrar los excedentes más antiguos
     if total_mensajes > max_mensajes:
         excess = total_mensajes - max_mensajes
         cursor.execute("""
@@ -82,8 +81,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ==========================================
+# 3. PROMPT DE SISTEMA Y BASE DE CONOCIMIENTO
+# ==========================================
 SYSTEM_PROMPT = """
-Eres 'Perseo AI Assistant Master', especialista senior y tutor certificado en el ecosistema completo de Perseo ERP (Ecuador):
+Eres 'Perseo AI Assistant Master', especialista senior, desarrollador y tutor certificado en el ecosistema completo de Perseo ERP (Ecuador):
 1. Perseo PC (Sistema de escritorio Windows)
 2. Perseo Web (Plataforma en la Nube)
 3. Perseo App Móvil (Android/iOS para vendedores y cobros)
@@ -93,30 +95,41 @@ REGLA DE IDIOMA OBLIGATORIA:
 - Queda estrictamente prohibido responder en inglés o usar términos no traducidos salvo que sean nombres propios del sistema Perseo o código de programación.
 
 CAPACIDADES Y ENFOQUE:
-- Resolución de Errores: Diagnosticas caídas del SRI, problemas de base de datos y licencias.
-- Tutoría Oficial (Estilo Perseo Academy): Explicas de forma didáctica y paso a paso cómo realizar procesos operativos correctos (crear artículos, emitir retenciones, cuadrar caja, registrar cobros, etc.) basándote estrictamente en la Base de Datos Técnica provista.
-
-REGLAS DE RESPUESTA:
-- Si el usuario pregunta cómo hacer un proceso, entrégale la ruta exacta de la interfaz y la lista de pasos numerados tal como se enseña en los manuales oficiales.
-- Identifica siempre la plataforma afectada (PC, Web o Móvil).
+- Resolución de Errores y Soporte Técnico: Diagnosticas fallas operativas, de base de datos, licencias y SRI.
+- Análisis y Corrección de Código: Tienes acceso directo a la estructura y código fuente del sistema. Si el usuario reporta un error de código o consulta cómo funciona una función interna, analiza el código provisto, indica el archivo afectado y entrega la corrección de código exacta.
+- Tutoría Oficial (Perseo Academy): Explicas paso a paso cómo realizar procedimientos operativos.
 
 ESTRUCTURA DE RESPUESTA:
-📍 **Plataforma y Módulo:** [Indicar entorno]
-📚 / 🛠️ **Procedimiento o Solución Paso a Paso:** [Guía detallada]
-💡 **Nota Técnica / Buenas Prácticas:** [Consejo adicional de la academia]
+📍 **Plataforma / Módulo:** [Indicar entorno o archivo de código afectado]
+🛠️ **Diagnóstico y Solución:** [Explicación clara del error o procedimiento]
+💻 **Código / Corrección Exacta:** [Si aplica, bloque de código corregido indicando el archivo]
+💡 **Nota Técnica:** [Recomendaciones adicionales]
 """
 
 @st.cache_data
 def cargar_base_conocimiento():
+    kb_json = ""
+    codigo_sistema = ""
+    
+    # 1. Cargar la base de conocimiento JSON (errores y procedimientos)
     try:
         with open("perseo_kb.json", "r", encoding="utf-8") as f:
             data = json.load(f)
-            return json.dumps(data, ensure_ascii=False)
+            kb_json = json.dumps(data, ensure_ascii=False)
     except Exception:
-        return ""
+        kb_json = "Sin base JSON local."
 
-base_conocimiento_texto = cargar_base_conocimiento()
-SYSTEM_PROMPT_COMPLETO = f"{SYSTEM_PROMPT}\n\nBASE DE DATOS TÉCNICA DE ERRORES PERSEO:\n{base_conocimiento_texto}"
+    # 2. Cargar la estructura y código completo del sistema (repomix-output.txt)
+    try:
+        with open("repomix-output.txt", "r", encoding="utf-8", errors="ignore") as f:
+            codigo_sistema = f.read()
+    except Exception:
+        codigo_sistema = "Sin código adjunto."
+
+    return f"BASE DE ERRORES Y ACADEMY:\n{kb_json}\n\nESTRUCTURA Y CÓDIGO FUENTE DEL SISTEMA PERSEO:\n{codigo_sistema}"
+
+# UNIFICACIÓN DEL PROMPT CON LA BASE DE DATOS Y EL CÓDIGO FUENTE
+SYSTEM_PROMPT_COMPLETO = f"{SYSTEM_PROMPT}\n\n{cargar_base_conocimiento()}"
 
 
 # ==========================================
@@ -413,6 +426,7 @@ if user_prompt:
         message_placeholder.markdown("*(Pensando y analizando caso en Perseo...)*")
 
         try:
+            # Aquí inyectamos el Prompt Maestro que ahora sí existe
             contents = [SYSTEM_PROMPT_COMPLETO]
             
             for past_msg in st.session_state.messages:
