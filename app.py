@@ -31,14 +31,10 @@ def guardar_y_limpiar_mensaje(role, content, max_mensajes=50):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Insertar nuevo mensaje
     cursor.execute("INSERT INTO historial (role, content) VALUES (?, ?)", (role, content))
-    
-    # Contar cuántos mensajes hay en total
     cursor.execute("SELECT COUNT(*) FROM historial")
     total_mensajes = cursor.fetchone()[0]
     
-    # Si supera el límite (50), borrar los excedentes más antiguos
     if total_mensajes > max_mensajes:
         excess = total_mensajes - max_mensajes
         cursor.execute("""
@@ -67,7 +63,6 @@ def vaciar_db():
     conn.commit()
     conn.close()
 
-# Inicializar la base de datos al arrancar la app
 init_db()
 
 
@@ -83,7 +78,7 @@ st.set_page_config(
 
 
 # ==========================================
-# 3. PROMPT DE SISTEMA Y BASE DE CONOCIMIENTO
+# 3. PROMPT DE SISTEMA Y GESTIÓN DE ARCHIVOS MASIVOS (FILES API)
 # ==========================================
 SYSTEM_PROMPT = """
 Eres 'Perseo AI Assistant Master', especialista senior, desarrollador y experto en base de datos del ecosistema completo de Perseo ERP (Ecuador):
@@ -98,7 +93,7 @@ REGLAS OBLIGATORIAS DE TECNOLOGÍA Y SINTAXIS (¡CRÍTICO!):
    - NUNCA uses la función ISNULL(). Usa IFNULL() o COALESCE().
    - Para limitar resultados usa la cláusula LIMIT al final de la consulta (ej. LIMIT 10), NUNCA uses TOP.
 2. LENGUAJE Y CÓDIGO FUENTE:
-   - Apóyate estrictamente en el código fuente y en la estructura de la base de datos (.sql) proporcionados en el contexto (repomix-output.txt).
+   - Apóyate estrictamente en el código fuente y en la estructura de la base de datos (.sql) proporcionados en el archivo adjunto (repomix-output.txt).
    - Usa los nombres exactos de tablas y columnas que existen en la base de datos de Perseo. NO inventes campos ni supongas estructuras.
 3. IDIOMA Y FORMATO:
    - Responde SIEMPRE y EXCLUSIVAMENTE en idioma español.
@@ -115,29 +110,30 @@ ESTRUCTURA DE RESPUESTA ESPERADA:
 """
 
 @st.cache_data
-def cargar_base_conocimiento():
-    kb_json = ""
-    codigo_sistema = ""
-    
-    # 1. Cargar la base de conocimiento JSON
+def cargar_kb_json():
     try:
         with open("perseo_kb.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-            kb_json = json.dumps(data, ensure_ascii=False)
+            return json.load(f)
     except Exception:
-        kb_json = "Sin base JSON local."
+        return {}
 
-    # 2. Cargar la estructura (.sql) y código completo del sistema
+@st.cache_resource
+def obtener_archivo_remoto_gemini(api_key_str):
+    """Sube el archivo masivo repomix-output.txt a la Files API de Gemini para evitar el límite de tokens inline."""
+    if not api_key_str:
+        return None
+    genai.configure(api_key=api_key_str)
     try:
-        with open("repomix-output.txt", "r", encoding="utf-8", errors="ignore") as f:
-            codigo_sistema = f.read()
+        # Verificar si ya fue subido previamente en la cuenta
+        for f in genai.list_files():
+            if f.display_name == "repomix_output":
+                return f
+        # Subir el archivo completo sin recortes
+        if os.path.exists("repomix-output.txt"):
+            return genai.upload_file("repomix-output.txt", display_name="repomix_output")
     except Exception:
-        codigo_sistema = "Sin código adjunto."
-
-    return f"--- BASE DE CONOCIMIENTO (ERRORES Y PROCEDIMIENTOS) ---\n{kb_json}\n\n--- ESTRUCTURA DE BASE DE DATOS Y CÓDIGO FUENTE (PERSEO) ---\n{codigo_sistema}"
-
-# UNIFICACIÓN DEL PROMPT CON LA BASE DE DATOS Y EL CÓDIGO FUENTE
-SYSTEM_PROMPT_COMPLETO = f"{SYSTEM_PROMPT}\n\n{cargar_base_conocimiento()}"
+        pass
+    return None
 
 
 # ==========================================
@@ -272,11 +268,11 @@ if "messages" not in st.session_state:
 if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
 
-PREFERRED_MODELS = ["gemini-1.5-pro", "gemini-1.5-flash"]
+PREFERRED_MODELS = ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"]
 
 
 # ==========================================
-# 6. FUNCIÓN DE GENERACIÓN (ALTA PRECISIÓN)
+# 6. FUNCIÓN DE GENERACIÓN CON FILES API
 # ==========================================
 def generate_gemini_response(contents):
     if not api_key:
@@ -284,8 +280,6 @@ def generate_gemini_response(contents):
 
     genai.configure(api_key=api_key)
     last_error = None
-    
-    # Configuramos la temperatura baja (0.1) para obligar a la IA a ser exacta, lógica y no inventar código.
     config = genai.types.GenerationConfig(temperature=0.1)
 
     for model_name in PREFERRED_MODELS:
@@ -297,7 +291,7 @@ def generate_gemini_response(contents):
             last_error = e
             continue
 
-    # Fallback genérico si los preferidos fallan
+    # Fallback si los preferidos fallan
     try:
         available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         for m in available:
@@ -398,7 +392,6 @@ if len(st.session_state.messages) == 0:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-# Renderizar historial de mensajes
 for msg in st.session_state.messages:
     avatar = "✨" if msg["role"] == "assistant" else "👤"
     with st.chat_message(msg["role"], avatar=avatar):
@@ -408,7 +401,7 @@ for msg in st.session_state.messages:
 
 
 # ==========================================
-# 9. LÓGICA PRINCIPAL DE CHAT
+# 9. LÓGICA PRINCIPAL DE CHAT CONTEXTUAL MASIVO
 # ==========================================
 user_prompt = st.chat_input("Escribe tu consulta sobre Perseo PC o describe el error...")
 
@@ -417,7 +410,6 @@ if st.session_state.pending_prompt and not user_prompt:
     st.session_state.pending_prompt = None
 
 if user_prompt:
-    # 1. Guardar mensaje de usuario
     guardar_y_limpiar_mensaje("user", user_prompt)
     
     user_msg_data = {"role": "user", "content": user_prompt}
@@ -431,25 +423,36 @@ if user_prompt:
             st.image(image_preview, width=300)
         st.markdown(user_prompt)
 
-    # 2. Generar respuesta del asistente
     with st.chat_message("assistant", avatar="✨"):
         message_placeholder = st.empty()
-        message_placeholder.markdown("*(Consultando estructura MySQL y manuales Perseo...)*")
+        message_placeholder.markdown("*(Analizando codebase completo, estructura SQL y manuales con Gemini Pro...)*")
 
         try:
-            # Construcción del contexto y prompt con reglas estrictas
-            contents = [SYSTEM_PROMPT_COMPLETO]
+            # Construcción inteligente del contexto usando la Files API de Gemini
+            contents = [SYSTEM_PROMPT]
             
+            # 1. Inyectar base JSON local si existe
+            kb_data = cargar_kb_json()
+            if kb_data:
+                contents.append(f"Base de conocimiento JSON local: {json.dumps(kb_data, ensure_ascii=False)}")
+
+            # 2. Inyectar el archivo masivo repomix-output.txt mediante referencia de archivo remoto (Cero límites de tokens inline)
+            remote_file = obtener_archivo_remoto_gemini(api_key)
+            if remote_file:
+                contents.append(remote_file)
+
+            # 3. Inyectar historial de la conversación
             for past_msg in st.session_state.messages:
                 role_label = "Usuario: " if past_msg["role"] == "user" else "Asistente Perseo: "
                 contents.append(f"{role_label}{past_msg['content']}")
 
+            # 4. Inyectar prompt de visión si hay imagen
             if image_preview is not None:
                 prompt_con_vision = f"""
                 Analiza minuciosamente esta captura de pantalla del sistema Perseo:
                 1. Lee el código de error exacto de la ventana emergente.
                 2. Identifica en qué pantalla de Perseo (PC, Web o Móvil) se encuentra el usuario.
-                3. Consulta tu conocimiento de Perseo y entrega la solución exacta para este error.
+                3. Consulta tu conocimiento y el código fuente completo adjunto y entrega la solución exacta.
                 
                 Consulta del usuario: {user_prompt}
                 """
@@ -459,7 +462,6 @@ if user_prompt:
             response_text, model_used = generate_gemini_response(contents)
             message_placeholder.markdown(response_text)
             
-            # Guardar respuesta generada
             guardar_y_limpiar_mensaje("assistant", response_text)
             st.session_state.messages.append({"role": "assistant", "content": response_text})
 
