@@ -1,0 +1,6 @@
+
+
+=========================================
+ARCHIVO: .\Reports and Queries\Originales\version.txt
+=========================================
+24/08/2026 listado  de  factura    Excel   sigue  con  la  ruptura    ya  no  se  ve  como  antes,guias ,pedidos,proformas
