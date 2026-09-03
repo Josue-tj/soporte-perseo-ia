@@ -81,29 +81,37 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
 # ==========================================
 # 3. PROMPT DE SISTEMA Y BASE DE CONOCIMIENTO
 # ==========================================
 SYSTEM_PROMPT = """
-Eres 'Perseo AI Assistant Master', especialista senior, desarrollador y tutor certificado en el ecosistema completo de Perseo ERP (Ecuador):
+Eres 'Perseo AI Assistant Master', especialista senior, desarrollador y experto en base de datos del ecosistema completo de Perseo ERP (Ecuador):
 1. Perseo PC (Sistema de escritorio Windows)
 2. Perseo Web (Plataforma en la Nube)
-3. Perseo App Móvil (Android/iOS para vendedores y cobros)
+3. Perseo App Móvil (Android/iOS)
 
-REGLA DE IDIOMA OBLIGATORIA:
-- Debes responder SIEMPRE y EXCLUSIVAMENTE en idioma español. 
-- Queda estrictamente prohibido responder en inglés o usar términos no traducidos salvo que sean nombres propios del sistema Perseo o código de programación.
+REGLAS OBLIGATORIAS DE TECNOLOGÍA Y SINTAXIS (¡CRÍTICO!):
+1. MOTOR DE BASE DE DATOS EXCLUSIVO: Trabajas ÚNICAMENTE con MySQL / MariaDB.
+   - NUNCA uses sintaxis de SQL Server o PostgreSQL.
+   - NUNCA uses corchetes [] para los nombres de columnas o alias. Usa comillas simples '' para textos o backticks `` si es necesario.
+   - NUNCA uses la función ISNULL(). Usa IFNULL() o COALESCE().
+   - Para limitar resultados usa la cláusula LIMIT al final de la consulta (ej. LIMIT 10), NUNCA uses TOP.
+2. LENGUAJE Y CÓDIGO FUENTE:
+   - Apóyate estrictamente en el código fuente y en la estructura de la base de datos (.sql) proporcionados en el contexto (repomix-output.txt).
+   - Usa los nombres exactos de tablas y columnas que existen en la base de datos de Perseo. NO inventes campos ni supongas estructuras.
+3. IDIOMA Y FORMATO:
+   - Responde SIEMPRE y EXCLUSIVAMENTE en idioma español.
 
 CAPACIDADES Y ENFOQUE:
 - Resolución de Errores y Soporte Técnico: Diagnosticas fallas operativas, de base de datos, licencias y SRI.
-- Análisis y Corrección de Código: Tienes acceso directo a la estructura y código fuente del sistema. Si el usuario reporta un error de código o consulta cómo funciona una función interna, analiza el código provisto, indica el archivo afectado y entrega la corrección de código exacta.
-- Tutoría Oficial (Perseo Academy): Explicas paso a paso cómo realizar procedimientos operativos.
+- Análisis y Corrección de Código: Si el usuario reporta un error, analiza el código provisto, indica el archivo afectado y entrega la corrección exacta.
 
-ESTRUCTURA DE RESPUESTA:
-📍 **Plataforma / Módulo:** [Indicar entorno o archivo de código afectado]
-🛠️ **Diagnóstico y Solución:** [Explicación clara del error o procedimiento]
-💻 **Código / Corrección Exacta:** [Si aplica, bloque de código corregido indicando el archivo]
-💡 **Nota Técnica:** [Recomendaciones adicionales]
+ESTRUCTURA DE RESPUESTA ESPERADA:
+📍 **Plataforma / Módulo:** [Indicar entorno, tabla o archivo afectado]
+🛠️ **Diagnóstico y Solución:** [Explicación clara y directa del error]
+💻 **Código / Consulta SQL:** [Código corregido o script SQL en sintaxis MySQL/MariaDB]
+💡 **Nota Técnica:** [Recomendaciones breves de buenas prácticas]
 """
 
 @st.cache_data
@@ -111,7 +119,7 @@ def cargar_base_conocimiento():
     kb_json = ""
     codigo_sistema = ""
     
-    # 1. Cargar la base de conocimiento JSON (errores y procedimientos)
+    # 1. Cargar la base de conocimiento JSON
     try:
         with open("perseo_kb.json", "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -119,14 +127,14 @@ def cargar_base_conocimiento():
     except Exception:
         kb_json = "Sin base JSON local."
 
-    # 2. Cargar la estructura y código completo del sistema (repomix-output.txt)
+    # 2. Cargar la estructura (.sql) y código completo del sistema
     try:
         with open("repomix-output.txt", "r", encoding="utf-8", errors="ignore") as f:
             codigo_sistema = f.read()
     except Exception:
         codigo_sistema = "Sin código adjunto."
 
-    return f"BASE DE ERRORES Y ACADEMY:\n{kb_json}\n\nESTRUCTURA Y CÓDIGO FUENTE DEL SISTEMA PERSEO:\n{codigo_sistema}"
+    return f"--- BASE DE CONOCIMIENTO (ERRORES Y PROCEDIMIENTOS) ---\n{kb_json}\n\n--- ESTRUCTURA DE BASE DE DATOS Y CÓDIGO FUENTE (PERSEO) ---\n{codigo_sistema}"
 
 # UNIFICACIÓN DEL PROMPT CON LA BASE DE DATOS Y EL CÓDIGO FUENTE
 SYSTEM_PROMPT_COMPLETO = f"{SYSTEM_PROMPT}\n\n{cargar_base_conocimiento()}"
@@ -258,7 +266,6 @@ if not api_key:
     except Exception:
         pass
 
-# Cargar mensajes previos directamente desde SQLite
 if "messages" not in st.session_state:
     st.session_state.messages = cargar_historial_db()
 
@@ -269,7 +276,7 @@ PREFERRED_MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
 
 # ==========================================
-# 6. FUNCIÓN DE GENERACIÓN
+# 6. FUNCIÓN DE GENERACIÓN (ALTA PRECISIÓN)
 # ==========================================
 def generate_gemini_response(contents):
     if not api_key:
@@ -277,16 +284,20 @@ def generate_gemini_response(contents):
 
     genai.configure(api_key=api_key)
     last_error = None
+    
+    # Configuramos la temperatura baja (0.1) para obligar a la IA a ser exacta, lógica y no inventar código.
+    config = genai.types.GenerationConfig(temperature=0.1)
 
     for model_name in PREFERRED_MODELS:
         try:
             model = genai.GenerativeModel(model_name)
-            response = model.generate_content(contents)
+            response = model.generate_content(contents, generation_config=config)
             return response.text, model_name
         except Exception as e:
             last_error = e
             continue
 
+    # Fallback genérico si los preferidos fallan
     try:
         available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         for m in available:
@@ -294,7 +305,7 @@ def generate_gemini_response(contents):
             if clean_name not in PREFERRED_MODELS:
                 try:
                     model = genai.GenerativeModel(clean_name)
-                    response = model.generate_content(contents)
+                    response = model.generate_content(contents, generation_config=config)
                     return response.text, clean_name
                 except Exception as e:
                     last_error = e
@@ -346,8 +357,8 @@ with st.sidebar:
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🗑️ Limpiar Conversación", use_container_width=True):
-        vaciar_db()  # Limpia la base de datos física
-        st.session_state.messages = []  # Limpia la sesión actual
+        vaciar_db()
+        st.session_state.messages = []
         st.session_state.pending_prompt = None
         st.rerun()
 
@@ -406,7 +417,7 @@ if st.session_state.pending_prompt and not user_prompt:
     st.session_state.pending_prompt = None
 
 if user_prompt:
-    # 1. Guardar mensaje de usuario en SQLite y sesión
+    # 1. Guardar mensaje de usuario
     guardar_y_limpiar_mensaje("user", user_prompt)
     
     user_msg_data = {"role": "user", "content": user_prompt}
@@ -423,10 +434,10 @@ if user_prompt:
     # 2. Generar respuesta del asistente
     with st.chat_message("assistant", avatar="✨"):
         message_placeholder = st.empty()
-        message_placeholder.markdown("*(Pensando y analizando caso en Perseo...)*")
+        message_placeholder.markdown("*(Consultando estructura MySQL y manuales Perseo...)*")
 
         try:
-            # Aquí inyectamos el Prompt Maestro que ahora sí existe
+            # Construcción del contexto y prompt con reglas estrictas
             contents = [SYSTEM_PROMPT_COMPLETO]
             
             for past_msg in st.session_state.messages:
@@ -448,9 +459,11 @@ if user_prompt:
             response_text, model_used = generate_gemini_response(contents)
             message_placeholder.markdown(response_text)
             
-            # Guardar respuesta en SQLite y en sesión
+            # Guardar respuesta generada
             guardar_y_limpiar_mensaje("assistant", response_text)
             st.session_state.messages.append({"role": "assistant", "content": response_text})
 
         except Exception as e:
-            message_placeholder.error(f"❌ Error de comunicación con Gemini AI: {e}")
+            error_msg = f"**Error de conexión:** {str(e)}"
+            message_placeholder.error(error_msg)
+            st.session_state.messages.append({"role": "assistant", "content": error_msg})
