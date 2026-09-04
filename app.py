@@ -197,16 +197,10 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
 # ==========================================
-# 5. CONFIGURACIÓN API OPENAI
+# 5. CONFIGURACIÓN API OPENAI (HARDCODED)
 # ==========================================
-load_dotenv()
+# API Key integrada directamente
 openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    try:
-        openai_api_key = st.secrets["OPENAI_API_KEY"]
-    except Exception:
-        pass
-
 if "messages" not in st.session_state:
     st.session_state.messages = cargar_historial_db()
 
@@ -233,7 +227,7 @@ with st.sidebar:
     if openai_api_key:
         st.markdown('<div class="openai-badge">🟢 OpenAI GPT-4o Conectado</div>', unsafe_allow_html=True)
     else:
-        st.error("🔴 Falta OPENAI_API_KEY en .env o secrets")
+        st.error("🔴 Falta OPENAI_API_KEY")
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📷 Adjuntar Captura de Pantalla")
@@ -332,12 +326,8 @@ if user_prompt:
         message_placeholder.markdown("*(Analizando codebase y esquema con GPT-4o...)*")
 
         try:
-            if not openai_api_key:
-                raise ValueError("Configura tu OPENAI_API_KEY en el entorno o en st.secrets.")
-
             client = OpenAI(api_key=openai_api_key)
 
-            # Construir mensajes para OpenAI
             messages_payload = [{"role": "system", "content": SYSTEM_PROMPT}]
             
             for past_msg in st.session_state.messages:
@@ -345,7 +335,7 @@ if user_prompt:
                 messages_payload.append({"role": role, "content": past_msg["content"]})
 
             response = client.chat.completions.create(
-                model="gpt-4o",  # Modelo de altísima potencia con contexto masivo
+                model="gpt-4o", 
                 messages=messages_payload,
                 temperature=0.1
             )
